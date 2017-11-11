@@ -1,5 +1,5 @@
 ---
-title: "W271 Section 3 Lab 2"
+title: "W271 Section 3 Lab 3"
 author: "Kiersten Henderson, Zhaoning Yu, Daghan Altas"
 date: "11/11/2017"
 output: 
