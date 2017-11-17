@@ -1,0 +1,141 @@
+---
+title: "W271 Section 3 Lab 3"
+author: "Kiersten Henderson, Zhaoning Yu, Daghan Altas"
+date: "11/17/2017"
+output: 
+  pdf_document: default
+  html_notebook: default
+---
+# Task 5:
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+
+if (dir.exists("/Users/daghanaltas/Hacking/Berkeley/w271/Labs/w271_lab3")) {
+  setwd("/Users/daghanaltas/Hacking/Berkeley/w271/Labs/w271_lab3")
+} else if (dir.exists("/Users/daghan/Hacking/Berkeley/W271/Labs/w271_lab1/")) {
+  setwd("/Users/daghan/Hacking/Berkeley/W271/Labs/w271_lab1/")
+} else {
+  setwd("~/Desktop/w271/Lab3")
+}
+
+rm(list=ls())
+```
+
+1. Read AMAZ.csv and UMCSENT.csv into R as R DataFrames
+
+```{r, message=FALSE}
+
+AMAZ_df <- read.csv("./AMAZ.csv")
+UMCSENT_df <- read.csv("./UMCSENT.csv")
+
+rbind(head(AMAZ_df),tail(AMAZ_df))
+dim(AMAZ_df)
+str(AMAZ_df)
+summary(AMAZ_df)
+
+rbind(head(UMCSENT_df,15),tail(UMCSENT_df,15))
+dim(UMCSENT_df)
+str(UMCSENT_df)
+summary(UMCSENT_df)
+
+```
+
+2. Convert them to xts objects
+
+```{r message=FALSE, warning=FALSE}
+library(xts)
+
+AMAZ <- as.xts(AMAZ_df[,-1], order.by = as.POSIXct(AMAZ_df$Index, format = "%Y-%m-%d"))
+UMCSENT <- as.xts(UMCSENT_df[,-1], order.by = as.POSIXct(UMCSENT_df$Index, format = "%Y-%m-%d"))
+
+rbind(head(AMAZ), tail(AMAZ))
+rbind(head(UMCSENT), tail(UMCSENT))
+```
+
+3. Merge the two set of series together, perserving all of the obserbvations in both set of series
+  a. fill all of the missing values of the UMCSENT series with -9999
+    
+```{r}
+AMAZ_UMCSENT_outer <- merge(AMAZ, UMCSENT, join = "outer", fill = -9999)
+
+#in order to be sure that the merge and subsequent manipulations occur as we intend, we monitor the head and tail, but also a subset of observations where there are observations for the AMAZ series but not the UMCSENT series.
+
+rbind(head(AMAZ_UMCSENT_outer),AMAZ_UMCSENT_outer['2007-01-26/2007-02-09'], tail(AMAZ_UMCSENT_outer))
+
+```
+    
+  b. then create a new series, named UMCSENT02, from the original  UMCSENT series replace all of the -9999 with NAs
+  
+```{r}
+UMCSENT02 <- xts(AMAZ_UMCSENT_outer)
+UMCSENT02[UMCSENT02 <= -9999] <- NA
+rbind(head(UMCSENT02),UMCSENT02['2007-01-26/2007-02-09'], tail(UMCSENT02))
+```
+  
+  c. then create a new series, named UMCSENT03, and replace the NAs with the last observation
+    
+```{r}
+UMCSENT03 <- xts(UMCSENT02)
+
+#depending on how we will analyze the merged series, we may or may not want to remove NAs that cannot be replaced with the last observation from the series.
+# First, we impute NAs while keeping NAs at the beginning of the series (there is no observation prior for these NA values)
+UMCSENT03a <- na.locf(UMCSENT03, na.rm = TRUE, fromLast = FALSE) 
+rbind(head(UMCSENT03a),UMCSENT03a['2007-01-26/2007-02-09'], tail(UMCSENT03a))
+# We also show how to impute these NA values by removing NAs at the beginning of the series
+UMCSENT03b <- na.locf(UMCSENT03, na.rm = FALSE, fromLast = FALSE) 
+rbind(head(UMCSENT03b),UMCSENT03b['2007-01-26/2007-02-09'], tail(UMCSENT03b))
+```
+    
+  d. then create a new series, named UMCSENT04, and replace the NAs using linear interpolation.
+    
+```{r}
+#we deem that it would be inappropriate to interpolate over more than a month's time.
+UMCSENT04 <- xts(UMCSENT02)
+UMCSENT04 <- round(na.approx(UMCSENT04, maxgap= 30), 2)
+```
+
+  e. Print out some observations to ensure that your merge as well as the missing value imputation are done correctly. 
+
+```{r}
+rbind(head(UMCSENT04),UMCSENT04['2007-01-26/2007-02-09'], tail(UMCSENT04))
+```
+
+  We printed 20 ~ 30 samples for each set (5~6 at the beginning / the end, and the rest from the middle of the dataset that have values for AMAZ but lack values for UMCSENT apart from one in the middle (this allowed us to observe more easily the effects of imputing values).
+
+4. Calculate the daily return of the Amazon closing price (AMAZ.close), where daily return is defined as $(x(t)-x(t-1))/x(t-1)$. Plot the daily return series.
+
+```{r  message=FALSE, warning=FALSE}
+XT = AMAZ[,4]
+dXT = diff(XT)
+daily.Return.AMAZ = dXT/lag(XT, k = 1)
+df = cbind(XT, dXT, daily.Return.AMAZ)
+colnames(df) <- c("AMAZ.close", "Delta", "Daily.Return")
+rbind(head(df),tail(df))
+
+library(ggfortify)
+autoplot(daily.Return.AMAZ, main="Daily Return AMAZ Stock from Jan 2007-Jan 2013") + ylab("Daily Return") + xlab("Time")
+```
+
+5. Create a 20-day and a 50-day rolling mean series from the AMAZ.close series.
+
+```{r  message=FALSE, warning=FALSE}
+AMAZ.close = AMAZ[,4]
+AMAZ.close.20.day.mean = rollapply(AMAZ.close, 20, FUN = mean, na.rm = TRUE)
+AMAZ.close.50.day.mean = rollapply(AMAZ.close, 50, FUN = mean, na.rm = TRUE)
+AMAZ.close.combined = cbind(AMAZ.close, AMAZ.close.20.day.mean, AMAZ.close.50.day.mean)
+colnames(AMAZ.close.combined) = c("Daily Close", "20 Day Mean", "50 day Mean")
+autoplot(AMAZ.close.combined, facets = T, main="Manipulating the AMAZ.close Series") + ylab("AMAZ Close") + xlab("Time")
+```
+
+
+
+
+
+
+
+
+
+
